@@ -6,51 +6,67 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <select id="chartType">
+        <option value="bar">Bar</option>
+        <option value="line">Line</option>
+        <option value="pie">Pie</option>
+        <option value="doughnut">Doughnut</option>
+        <option value="scatter">Scatter</option>
+    </select>
     <input id="question" placeholder="Ask a data question">
-    <button onclick="fetchChart()">Generate Chart</button>
+    <button onclick="fetchData()">Generate Chart</button>
+    <button onclick="renderWithSelectedType()">Render Chart</button>
     <canvas id="myChart" width="800" height="400"></canvas>
 
     <script>
         let currentChart = null;
-        
-        async function fetchChart() {
-            const question = document.getElementById("question").value;
-            const res = await fetch("http://localhost:8000/ask", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question })
-            });
+        let chartData = null;  // cache fetched data
 
-            const chartData = await res.json();
+        function renderChart(chartType, data) {
             const ctx = document.getElementById("myChart").getContext("2d");
-            console.log(chartData);
 
-            if (chartData.error) {
-                alert(chartData.error);
-                return;
-            }
-            
             if (currentChart) {
                 currentChart.destroy();
             }
 
             currentChart = new Chart(ctx, {
-                type: "bar", // or 'line', 'pie', 'scatter', etc.
-                data: chartData,
+                type: chartType,
+                data: {
+                    labels: data.labels,
+                    datasets: data.datasets
+                },
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: {
-                            position: 'top'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Your Chart'
-                        }
+                        legend: { position: 'top' },
+                        title: { display: true, text: `Chart: ${chartType}` }
                     }
                 }
             });
         }
+
+        async function fetchData() {
+            const question = document.getElementById("question").value;
+            const response = await fetch("http://localhost:8000/ask", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question })
+            });
+
+            chartData = await response.json(); // Store in global variable
+            renderWithSelectedType(); // Immediately render with selected type
+        }
+
+        function renderWithSelectedType() {
+            if (!chartData) {
+                alert("Please fetch data first.");
+                return;
+            }
+
+            const chartType = document.getElementById("chartType").value;
+            renderChart(chartType, chartData);
+        }
+
     </script>
 </body>
 </html>

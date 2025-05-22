@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chart from SQL</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <input id="question" placeholder="Ask a data question">
+    <button onclick="fetchChart()">Generate Chart</button>
+    <canvas id="myChart" width="800" height="400"></canvas>
+
+    <script>
+        let currentChart = null;
+        
+        async function fetchChart() {
+            const question = document.getElementById("question").value;
+            const res = await fetch("http://localhost:8000/ask", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question })
+            });
+
+            const chartData = await res.json();
+            const ctx = document.getElementById("myChart").getContext("2d");
+            console.log(chartData);
+
+            if (chartData.error) {
+                alert(chartData.error);
+                return;
+            }
+            
+            if (currentChart) {
+                currentChart.destroy();
+            }
+
+            currentChart = new Chart(ctx, {
+                type: "bar", // or 'line', 'pie', 'scatter', etc.
+                data: chartData,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Your Chart'
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

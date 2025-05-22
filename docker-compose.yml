@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: cr.yandexcloud.kz/crk956f9raap30ar3ev2/postgres-raccoonai:latest
+    ports: 
+      - "5433:5432"
+    container_name: sql-llm-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_PORT: 5432
+      PGDATA: /var/lib/postgresql/data/pgdata
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: sql-llm-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com  
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"

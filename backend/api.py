@@ -54,25 +54,3 @@ def ask_data(req: QuestionRequest):
 
     except Exception as e:
         return Response(content=orjson.dumps({"error": str(e)}), media_type="application/json")
-
-def transform_to_chartjs_format(data):
-    # Try simple bar or line chart format
-    if not data["rows"]:
-        return {"labels": [], "datasets": []}
-
-    labels = [str(row[0]) for row in data["rows"]]
-    datasets = []
-
-    for i, col in enumerate(data["columns"][1:]):
-        datasets.append({
-            "label": col,
-            "data": [row[i+1] for row in data["rows"]],
-            "backgroundColor": f"rgba(54, 162, 235, 0.6)",
-            "borderColor": f"rgba(54, 162, 235, 1)",
-            "borderWidth": 1
-        })
-
-    return {
-        "labels": labels,
-        "datasets": datasets
-    }

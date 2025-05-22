@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+
 from pydantic import BaseModel
 import orjson
 
@@ -26,26 +28,32 @@ class QuestionRequest(BaseModel):
 @app.post("/ask")
 def ask_data(req: QuestionRequest):
     try:
+        user_question = req.question
         conn = get_connection()
         schema = get_schema_with_samples(conn)
-        sql_query = generate_sql(req.question, schema).replace("`", "").replace("sql", "")
+        sql_query = generate_sql(user_question, schema).replace("`", "").replace("sql", "")
 
-        print(req.question)
+        print(user_question)
         print(sql_query)
-        
+
         if not is_safe_sql(sql_query):
             return {"error": "Unsafe or invalid query generated."}
         
-        data = run_sql(sql_query, conn)
+        data = run_sql(sql_query, conn, schema_context=schema, user_question=user_question)
         print(data)
         conn.close()
-        chart = transform_to_chartjs_format(data)
-        print(chart)
-        # Transform data to Chart.js format
-        return chart
+
+        rows_as_dict = [dict(zip(data["columns"], row)) for row in data["rows"]]
+        print(rows_as_dict)
+        response_data = {
+            "columns": data["columns"],
+            "rows": rows_as_dict
+        }
+
+        return Response(content=orjson.dumps(response_data), media_type="application/json")
 
     except Exception as e:
-        return {"error": str(e)}
+        return Response(content=orjson.dumps({"error": str(e)}), media_type="application/json")
 
 def transform_to_chartjs_format(data):
     # Try simple bar or line chart format

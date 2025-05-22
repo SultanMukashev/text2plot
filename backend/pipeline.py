@@ -76,20 +76,38 @@ def is_safe_sql(query):
     return True
 
 # === 4. Run query locally ===
-def run_sql(query, conn):
+def run_sql(query, conn, schema_context=None, user_question=None, retry=True):
     cursor = conn.cursor()
-    cursor.execute(query)
+    try:
+        cursor.execute(query)
+    except Exception as e:
+        error_message = str(e)
+        print("Original SQL failed:", error_message)
+        if retry and schema_context and user_question:
+            corrected_query = retry_query_with_error_context(query, error_message, schema_context, user_question)
+            print("Retrying with corrected SQL:", corrected_query)
+            try:
+                conn.rollback()
+                cursor.execute(corrected_query)
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                return {"columns": columns, "rows": rows, "corrected": True}
+            except Exception as retry_e:
+                return {"error": f"Retry also failed: {str(retry_e)}", "original_error": error_message}
+        return {"error": error_message}
+    
     columns = [desc[0] for desc in cursor.description]
     rows = cursor.fetchall()
     return {"columns": columns, "rows": rows}
 
+
 # === 5. Ask GPT for query generation ===
 def generate_sql(user_question, schema_context):
     messages = [
-        {"role": "system", "content": f"""You are an assistant that generates SQL queries return only query itself without any comments. Use only SELECT and try to use only meaningful columns such as name, not just ids, use joins when necessary and do not confuse table name aliases. You can order the results to return the most informative data in the database.
+        {"role": "system", "content": f"""You are an assistant that generates SQL queries return only query itself without any comments. Use only SELECT and try to use only meaningful columns such as name, not just ids, use joins when necessary and do not confuse table name aliases. There is always table_name.id column in each table as primary key .You can order the results to return the most informative data in the database.
 Never query for all columns from a table. You must query only the columns that are needed to answer the question. Wrap each column name in double quotes (") to denote them as delimited identifiers.
 Pay attention to use only the column names you can see in the tables below. Be careful to not query for columns that do not exist in your selecting table. Also, pay attention to which column is in which table.
-Pay attention to use CURRENT_DATE function to get the current date, if the question involves "today". Schema:\n{schema_context} pickup location table is one to one with locations table, if you want to get pickuplocation name, join with location and get locaiton.name instead. If user asks for map plot, always select lon and lat """},
+Pay attention to use CURRENT_DATE function to get the current date, if the question involves "today". Schema:\n{schema_context} pickup location table is one to one with locations table, if you want to get pickuplocation name, join with location and get locaiton.name instead."""},
         {"role": "user", "content": user_question}
     ]
     response = openai.chat.completions.create(
@@ -99,59 +117,32 @@ Pay attention to use CURRENT_DATE function to get the current date, if the quest
     )
     return response.choices[0].message.content.strip()
 
-# === 6. Generate Plotly JSON ===
-def generate_plotly_json(data, user_question):
+def retry_query_with_error_context(bad_query, error_message, schema_context, user_question):
     messages = [
-        {"role": "system", "content": (
-    "You are a visualization expert. Given a dataset and user question, generate a JSON using Plotly "
-    "(plotly.graph_objects or plotly.express) to create the most appropriate and insightful chart. "
-    "Return ONLY the fig.to_json() output, not HTML or explanations.\n\n"
+        {"role": "system", "content": f"""You are a helpful assistant that corrects broken SQL queries.
+            You are given a faulty SQL query, the schema, the user's natural language question, and the error message produced by the database.
+            Fix the query to resolve the error. Only use SELECT statements. Do not use DELETE, INSERT, UPDATE, etc.
 
-    "Use chart types based on data patterns:\n"
-    "- Use bar or horizontal bar if comparing categories (e.g., top N).\n"
-    "- Use pie if data has a part-of-whole relationship.\n"
-    "- Use 'scatter' with mode='lines+markers' for time series or trends.\n"
-    "- Use scatter if comparing two continuous variables.\n"
-    "- Use map subplots if you want to show something on it instead of mapbox since it is deprecated"
-    "- Use heatmap if showing relationships between 2 categorical axes with a metric.\n\n"
+            Schema:
+            {schema_context}
 
-    "If the user question is unclear or missing, analyze the dataset and choose the most informative and insightful chart. "
-    "For time-based job/task data, consider showing:\n"
-    "- Duration between fact_start_at and fact_end_at per job.\n"
-    "- Comparison of planned vs actual start/end.\n"
-    "- Delays or time gaps between planned and actual.\n\n"
+            Make sure:
+            - Only valid table and column names from the schema are used.
+            - Aliases are not mixed up.
+            - Joins are valid.
+            - Quotes around identifiers are correct (use double quotes).
+            - The corrected query answers the user's question.
 
-    "Always add axis titles, legends, and clear chart titles and unquote integers when you are referring to colours of plot."
-)},
-        {"role": "user", "content": f"The user asked: '{user_question}'. Here is the data:\nColumns: {data['columns']}\nRows: {data['rows']}"}
-    ]
-    print(f"Columns: {data['columns']}\nRows: {data['rows']}")
+            Return ONLY the corrected SQL query, no explanations or comments."""},
+                    {"role": "user", "content": f"""User question: {user_question}
+            Broken query:
+            {bad_query}
 
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo-1106",
-        messages=messages,
-        temperature=0
-    )
-    # return response.choices[0].message.content.strip()
-    json_out = response.choices[0].message.content.strip()
-    if '"data": []' in json_out:
-        print("Empty chart data returned from GPT.")
-        # Optional: trigger fallback visualization or re-ask GPT with more context
-    return json_out
-
-def generate_plot_code(data, user_question):
-    messages = [
-        {"role": "system", "content": (
-            "You are a Python data visualization assistant.\n"
-            "Given structured data as a dict with 'columns' and 'rows', generate Python code "
-            "that defines a function called `create_figure(data: dict) -> plotly.graph_objects.Figure`.\n\n"
-            "Use `plotly.graph_objects` or `plotly.express` to build a clear, beautiful, and relevant chart "
-            "based on the question and the data.\n"
-            "The function should not read files or require external input.\n"
-            "Return ONLY the code (no explanation, no markdown)."
-        )},
-        {"role": "user", "content": f"The user asked: '{user_question}'.\nHere is the data:\nColumns: {data['columns']}\nRows: {data['rows']}"}
-    ]
+            Error message:
+            {error_message}
+            """}
+            ]
+    
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo-1106",
         messages=messages,
@@ -172,32 +163,3 @@ def suggest_followup_questions(schema_context, user_question):
     )
     return response.choices[0].message.content.strip()
 
-
-# === 7. Full pipeline ===
-def handle_user_query(user_question):
-    conn = get_connection()
-    schema = get_schema_with_samples(conn)
-    print(schema)
-    sql_query = generate_sql(user_question, schema).replace("`","").replace("sql","")
-    print("Generated SQL:", sql_query)
-
-    if not is_safe_sql(sql_query):
-        raise Exception("Unsafe or prohibited SQL query.")
-
-    data = run_sql(sql_query, conn)
-    print(data)
-    conn.close()
-    return orjson.loads(data)
-# === Example usage ===
-# if __name__ == "__main__":
-#     # user_question = "What are the top 5 drivers by amount of routes?"
-#     while True:
-#         user_question = input("What data you want to get: ")
-#         if user_question == 'q':
-#             break
-#         try:
-#             fig = handle_user_query(user_question)
-#             # fig = pio.from_json(orjson.dumps(fig_json))
-#             fig.show()  # Optional, for debugging
-#         except Exception as e:
-#             print("Error:", e)

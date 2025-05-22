@@ -11,7 +11,6 @@ import plotly.express as px
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
-# openai.api_key = "your-openai-key"
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 print("Loaded OpenAI Key:", openai.api_key[-8:] + "..." if openai.api_key else "Not found!")
@@ -94,7 +93,7 @@ Pay attention to use CURRENT_DATE function to get the current date, if the quest
         {"role": "user", "content": user_question}
     ]
     response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo-1106",
         messages=messages,
         temperature=0
     )
@@ -154,7 +153,7 @@ def generate_plot_code(data, user_question):
         {"role": "user", "content": f"The user asked: '{user_question}'.\nHere is the data:\nColumns: {data['columns']}\nRows: {data['rows']}"}
     ]
     response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo-1106",
         messages=messages,
         temperature=0
     )
@@ -167,7 +166,7 @@ def suggest_followup_questions(schema_context, user_question):
         {"role": "user", "content": f"""User asked: "{user_question}". Suggest 3 follow-up questions the user might want to ask next to better explore trends, patterns in the data."""}
     ]
     response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo-1106",
         messages=messages,
         temperature=0
     )
@@ -187,24 +186,18 @@ def handle_user_query(user_question):
 
     data = run_sql(sql_query, conn)
     print(data)
-    # plotly_json = generate_plotly_json(data, user_question).replace("`","").replace("json","").replace("mapbox","map")
-    # print("Plotly json:", plotly_json)
-    suggestions = suggest_followup_questions(schema, user_question)
-    print("\n💡 Follow-up questions you might ask:\n" + suggestions)
     conn.close()
-    # return orjson.loads(plotly_json)
-    return fig
-
+    return orjson.loads(data)
 # === Example usage ===
-if __name__ == "__main__":
-    # user_question = "What are the top 5 drivers by amount of routes?"
-    while True:
-        user_question = input("What data you want to get: ")
-        if user_question == 'q':
-            break
-        try:
-            fig = handle_user_query(user_question)
-            # fig = pio.from_json(orjson.dumps(fig_json))
-            fig.show()  # Optional, for debugging
-        except Exception as e:
-            print("Error:", e)
+# if __name__ == "__main__":
+#     # user_question = "What are the top 5 drivers by amount of routes?"
+#     while True:
+#         user_question = input("What data you want to get: ")
+#         if user_question == 'q':
+#             break
+#         try:
+#             fig = handle_user_query(user_question)
+#             # fig = pio.from_json(orjson.dumps(fig_json))
+#             fig.show()  # Optional, for debugging
+#         except Exception as e:
+#             print("Error:", e)
